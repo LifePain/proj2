@@ -104,7 +104,7 @@ type User struct {
 	Password  []byte
 	Sksign    userlib.DSSignKey
 	Skdecrypt userlib.PKEDecKey
-	FileNames []string
+	FileNames map[string]uuid.UUID
 
 	// You can add other attributes here if you want! But note that in order for attributes to
 	// be included when this struct is serialized to/from JSON, they must be capitalized.
@@ -115,21 +115,13 @@ type User struct {
 }
 
 type File struct {
-	Content string
-	UUID    string
-	FilePointer int
-	UserPointer int
-	
+	Next    uuid.UUID
+	Content []byte
 }
 
 type FilePointer struct {
-	NextAddress int
-}
-
-type FileChunk struct {
-	FileAddress int
-	LastChunk   bool
-	Content     byte
+	FileAddress uuid.UUID
+	SharedTo    map[string]uuid.UUID
 }
 
 // NOTE: The following methods have toy (insecure!) implementations.
@@ -153,7 +145,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 		} else {
 			userdata.Username = hash
 			userdata.Password = userlib.Hash([]byte(password))
-			userdata.FileNames = []string{}
+			userdata.FileNames = make(map[string]uuid.UUID)
 
 			var pkencrypt userlib.PKEEncKey
 			var skdecrypt userlib.PKEDecKey
@@ -172,7 +164,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 			DSsignkey, DSverifykey, _ := userlib.DSKeyGen()
 
-			userdata.Sksign = DSsignkey     
+			userdata.Sksign = DSsignkey
 
 			DSstoreset := append(userdata.Username[len(userdata.Username)-14:], []byte("DS")...)
 
@@ -266,6 +258,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 
 	return userdataptr, nil
 }
+
 func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	FileStorage := uuid.New()
 	contentBytes, err := json.Marshal(content)
@@ -303,6 +296,9 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	return
 }
 
+func (userdata *User) AppendToFile(filename string, content []byte) error {
+	return nil
+}
 
 func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 	storageKey, err := uuid.FromBytes(userlib.Hash(append([]byte(filename), userdata.Username...))[:16])
@@ -317,37 +313,6 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 	return content, err
 }
 
-	func (userdata *User) AppendToFile(filename string, content[] byte) error {
-		
-		//encrypting public key
-		storageKey, err := uuid.FromBytes(userlib.Hash(append([]byte(filename), userdata.Username...))[:16])
-		ivgen := userlib.RandomBytes(userlib.AESBlockSizeBytes)
-		if err != nil {
-			fmt.Println("An error occurred while generating an IV ")
-		}
-
-		//encrypting the file
-		encryptedFile := userlib.SymEnc(storageKey[:],ivgen,content)	
-		if err != nil {
-			fmt.Println("An error occurred while encrypting ")
-		}
-
-		//sigining the file
-		DSsignkey, DSverifykey, _ := userlib.DSKeyGen()
-		userdata.Sksign = DSsignkey     
-		Signature, err := userlib.DSSign(DSsignkey, encryptedFile)
-		if err != nil {
-			fmt.Println("Something went wrong in signing.")
-		}
-		UserEncDS := append(UserEncrypted, Signature...)
-		
-		//initiate the file
-		var file File
-		//file UUID to be added
-		file.FilePointer := "//uuid of file from getfile"
-		userlib.DatastoreSet("//fileUUID", UserEncDS)
-	}
-
 func (userdata *User) CreateInvitation(filename string, recipientUsername string) (
 	invitationPtr uuid.UUID, err error) {
 	return
@@ -360,32 +325,3 @@ func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid
 func (userdata *User) RevokeAccess(filename string, recipientUsername string) error {
 	return nil
 }
-
-func min(a, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-
-}
-
-func FileChunker(fileAdd int, lastchunk bool, content[] byte) (err error) {
-    var filedata File
-    arr := content
-    limit := 1
-
-    for i := 0; i < len(arr); i += limit {
-        batch := arr[i:min(i+limit, len(arr))]
-        //converts batch into byte
-        batchele := batch[0]
-        fmt.Println(batch)
-		//adds the current chink into the Chunk struct
-        filedata.Chunks = append(filedata.Chunks, batchele)
-    }
-    
-    if err != nil {
-        return err
-    }
-	return
-}
-
