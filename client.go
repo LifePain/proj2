@@ -118,6 +118,8 @@ type File struct {
 	Content string
 	UUID    string
 	FilePointer int
+	UserPointer int
+	
 }
 
 type FilePointer struct {
@@ -265,15 +267,39 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	return userdataptr, nil
 }
 func (userdata *User) StoreFile(filename string, content []byte) (err error) {
-	storageKey, err := uuid.FromBytes(userlib.Hash(append([]byte(filename), userdata.Username...))[:16])
-	if err != nil {
-		return err
-	}
+	FileStorage := uuid.New()
 	contentBytes, err := json.Marshal(content)
 	if err != nil {
 		return err
 	}
-	userlib.DatastoreSet(storageKey, contentBytes)
+	if _, ok := userdata.FileNames[filename]; ok {
+		FileUUID, ok := userdata.FileNames[filename]
+		if !ok {
+			fmt.Println("Something went wrong in retrieving the file UUID.")
+		}
+		userlib.DatastoreSet(FileUUID, contentBytes)
+		return
+	} else {
+		//Create instance of File, and store file with contents in the datastore
+		var file File
+		file.Content = content
+		fileBytes, err := json.Marshal(file)
+		if err != nil {
+			fmt.Println("Error occurred in marshalling file")
+		}
+		userlib.DatastoreSet(FileStorage, fileBytes)
+		//Create instance of FilePointer, and store FilePointer in the datastore
+		var Fileptr FilePointer
+		Fileptr.FileAddress = FileStorage
+		Fileptr.SharedTo = make(map[string]uuid.UUID)
+		PointerStorage := uuid.New()
+		userdata.FileNames[filename] = PointerStorage
+		FileptrBytes, err := json.Marshal(Fileptr)
+		userlib.DatastoreSet(PointerStorage, FileptrBytes)
+		//Update Filenames under user struct
+		userdata.FileNames[filename] = PointerStorage
+	}
+
 	return
 }
 
